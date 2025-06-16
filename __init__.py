@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 2, 0),
+    "version": (2, 2, 1),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -956,7 +956,7 @@ class UnifyNodeSettings(bpy.types.Operator):
                                             template_node.bl_rna.properties.keys())
                                         new_property_list = list()
 
-                                        do_not_use = ['rna_type', 'type', 'location', 'width', 'width_hidden', 'height', 'dimensions', 'name', 'label', 'inputs', 'outputs', 'internal_links', 'parent', 'use_custom_color', 'color', 'select', 'show_options',
+                                        do_not_use = ['rna_type', 'type', 'location', 'location_absolute', 'width', 'width_hidden', 'height', 'dimensions', 'name', 'label', 'inputs', 'outputs', 'internal_links', 'parent', 'use_custom_color', 'color', 'select', 'show_options',
                                                       'show_preview', 'hide', 'mute', 'show_texture', 'bl_idname', 'bl_label', 'bl_description', 'bl_icon', 'bl_static_type', 'bl_width_default', 'bl_width_min', 'bl_width_max', 'bl_height_default', 'bl_height_min', 'bl_height_max']
 
                                         for prop in property_list:
@@ -1172,6 +1172,14 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     else:
                                         material.blend_method = 'OPAQUE'
 
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+
                                     # Store the image of the existing image texture node (if any)
                                     stored_image = None
                                     for node in material.node_tree.nodes:
@@ -1204,6 +1212,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     color_attr_node = material.node_tree.nodes.new(type='ShaderNodeVertexColor')
                                     emission_node = material.node_tree.nodes.new(type='ShaderNodeEmission')
                                     material_output_node = material.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
 
                                     # Arrange nodes for clarity
                                     if stored_image != None:
@@ -1246,6 +1258,14 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     else:
                                         material.blend_method = 'OPAQUE'
 
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+                                    
                                     # Clear existing nodes
                                     material.node_tree.nodes.clear()
 
@@ -1253,6 +1273,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     color_attr_node = material.node_tree.nodes.new(type='ShaderNodeVertexColor')
                                     emission_node = material.node_tree.nodes.new(type='ShaderNodeEmission')
                                     material_output_node = material.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
 
                                     # Arrange nodes for clarity
                                     color_attr_node.location = (-200, 100)
@@ -1278,6 +1302,14 @@ class ApplyMatTemplate(bpy.types.Operator):
                                         material.surface_render_method = 'DITHERED'
                                     else:
                                         material.blend_method = 'CLIP'
+                                    
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
                                     
                                     # Store the image of the existing image texture node (if any)
                                     stored_image = None
@@ -1322,6 +1354,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                         if len(obj.data.vertex_colors) > 0:
                                             color_attr_node.layer_name = obj.data.vertex_colors[0].name
 
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
+
                                     # Arrange nodes for clarity
                                     if stored_image is not None:
                                         uv_map_node.location = (-700, 0)
@@ -1355,7 +1391,8 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     # Mix Shader links
                                     links.new(emission_node.outputs[0], mix_shader_node.inputs[2])
                                     links.new(transparent_node.outputs[0], mix_shader_node.inputs[1])
-                                    links.new(img_texture_node.outputs[1], mix_shader_node.inputs[0])
+                                    if stored_image is not None:
+                                        links.new(img_texture_node.outputs[1], mix_shader_node.inputs[0])
                                     links.new(mix_shader_node.outputs[0], material_output_node.inputs[0])
 
                                     # Blender 4.2 got rid of the alpha clip setting, so we use the Math node instead
@@ -1364,7 +1401,8 @@ class ApplyMatTemplate(bpy.types.Operator):
                                         greaterthan_node = material.node_tree.nodes.new(type='ShaderNodeMath')
                                         greaterthan_node.operation = 'GREATER_THAN'
                                         greaterthan_node.location = (-200,-140)
-                                        links.new(img_texture_node.outputs[1], greaterthan_node.inputs[0])
+                                        if stored_image is not None:
+                                            links.new(img_texture_node.outputs[1], greaterthan_node.inputs[0])
                                         links.new(greaterthan_node.outputs[0], mix_shader_node.inputs[0])
                                     else:
                                         material.blend_method = "CLIP"
@@ -1373,7 +1411,15 @@ class ApplyMatTemplate(bpy.types.Operator):
                                 case "ACT":
 
                                     material.blend_method = "BLEND"
-                                    
+
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+
                                     # Store the image of the existing image texture node (if any)
                                     stored_image = None
                                     for node in material.node_tree.nodes:
@@ -1406,6 +1452,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     material_output_node = material.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
                                     add_shader_node = material.node_tree.nodes.new(type='ShaderNodeAddShader')
                                     transparent_node = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
 
                                     # Add correct Vertex Color name
                                     if useColorAttributes:
@@ -1454,6 +1504,14 @@ class ApplyMatTemplate(bpy.types.Operator):
 
                                     material.blend_method = "BLEND"
 
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+
                                     # Clear existing nodes
                                     material.node_tree.nodes.clear()
 
@@ -1471,6 +1529,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     else:
                                         if len(obj.data.vertex_colors) > 0:
                                             color_attr_node.layer_name = obj.data.vertex_colors[0].name
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
 
                                     # Arrange nodes for clarity
                                     color_attr_node.location = (-200, 100)
@@ -1498,6 +1560,14 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     uses_transparency = False
                                     has_alpha_channel = True
 
+                                    # Store the color of the existing Principled BSDF or Emission node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+                                    
                                     # Store the image of the existing image texture node (if any)
                                     stored_image = None
                                     for node in material.node_tree.nodes:
@@ -1528,6 +1598,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                         img_tex_node.image = stored_image
                                     principled_node = nodes.new(type='ShaderNodeBsdfPrincipled')
                                     material_output_node = nodes.new(type='ShaderNodeOutputMaterial')
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        principled_node.inputs[0].default_value = stored_color
 
                                     # Set positions for the nodes
                                     if stored_image != None:
@@ -1565,8 +1639,14 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     else:
                                         material.blend_method = 'OPAQUE'
 
-                                    # Store the image of the existing image texture node (if any)
-
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+                                    
                                     nodes = material.node_tree.nodes
                                     links = material.node_tree.links
 
@@ -1576,6 +1656,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     color_attr_node = nodes.new(type='ShaderNodeVertexColor')
                                     principled_node = nodes.new(type='ShaderNodeBsdfPrincipled')
                                     material_output_node = nodes.new(type='ShaderNodeOutputMaterial')
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        principled_node.inputs[0].default_value = stored_color
 
                                     # Add correct Vertex Color name
                                     if useColorAttributes:
@@ -1600,6 +1684,14 @@ class ApplyMatTemplate(bpy.types.Operator):
                                         material.surface_render_method = 'BLENDED'
                                     else:
                                         material.blend_method = 'OPAQUE'
+
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
                                     
                                     # Store the image of the existing image texture node (if any)
                                     stored_image = None
@@ -1652,6 +1744,10 @@ class ApplyMatTemplate(bpy.types.Operator):
                                             uv_map_node.uv_map = obj.data.uv_layers[0].name
                                     emission_node = material.node_tree.nodes.new(type='ShaderNodeEmission')
                                     material_output_node = material.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
 
                                     # Arrange nodes for clarity
                                     if stored_image != None:
