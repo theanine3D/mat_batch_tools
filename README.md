@@ -54,3 +54,10 @@ Finding this addon useful? Please consider starring it ⭐, [leaving a review](h
 #### Shader Switch
 ![shader switch](https://user-images.githubusercontent.com/88953117/209982952-27bddc61-4a7b-4780-a849-b3f85af73a4e.gif)
 
+
+### Gallery
+The projects below were created using Material Batch Tools. They are great examples of what this addon makes possible.
+- #### Destiny Islands - Garry's Mod map by Theanine3D
+  - [![YouTube Video](https://github.com/user-attachments/assets/57a5d834-cf59-41b4-ba26-dbfc92e0772a)](https://www.youtube.com/watch?v=bWywVC6aR9M)
+
+
