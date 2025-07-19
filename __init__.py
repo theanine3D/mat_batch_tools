@@ -1095,6 +1095,7 @@ class SwitchShader(bpy.types.Operator):
 
                             for old_shader in old_shaders:
 
+                                color_input = old_shader.inputs[0].default_value
                                 new_shader = None
                                 input_node_socket = None
                                 output_node_socket = None
@@ -1121,6 +1122,10 @@ class SwitchShader(bpy.types.Operator):
                                 if len(old_shader.outputs[0].links) > 0:
                                     material.node_tree.links.new(
                                         output_node_socket, new_shader.outputs[0])
+
+                                # Restore the original color input
+                                new_shader.inputs[0].default_value = color_input
+
                                 material.node_tree.nodes.remove(old_shader)
                                 num_processed += 1
 
