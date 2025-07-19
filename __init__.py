@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 2, 1),
+    "version": (2, 2, 3),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -1700,7 +1700,7 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     for node in material.node_tree.nodes:
                                         if node.type == 'TEX_IMAGE' and node.image:
                                             # An extra check to make sure we're not using the HDR texture as the albedo
-                                            if not ('OPEN_EXR' in node.image.file_format or 'HDR' in node.image.file_format or 'lightmap' in node.image.name_full):
+                                            if not ('light_' in node.image.name_full or '_light' in node.image.name_full or 'OPEN_EXR' in node.image.file_format or 'HDR' in node.image.file_format or 'lightmap' in node.image.name_full):
                                                 if is_node_connected(material, node):
                                                     stored_image = node.image
                                                     break
@@ -1708,7 +1708,7 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     for node in material.node_tree.nodes:
                                         if node.type == 'TEX_IMAGE' and node.image:
                                             # Find the HDR texture in the material and store it, if one was already present 
-                                            if 'OPEN_EXR' in node.image.file_format or 'HDR' in node.image.file_format or 'lightmap' in node.image.name_full:
+                                            if 'light_' in node.image.name_full or '_light' in node.image.name_full or 'OPEN_EXR' in node.image.file_format or 'HDR' in node.image.file_format or 'lightmap' in node.image.name_full:
                                                 stored_hdr_image = node.image
                                                 break
 
@@ -2256,8 +2256,8 @@ class IsolateByMatTrait(bpy.types.Operator):
                     separated_objs.add(separated_obj)
             
             if isolate_to_collection:
-                if trait.capitalize() in bpy.data.collections.keys():
-                    root_collection = bpy.data.collections[trait.capitalize()]
+                if trait.capitalize() in bpy.context.scene.collection.children.keys():
+                    root_collection = bpy.context.scene.collection.children[trait.capitalize()]
                 else:
                     root_collection = bpy.data.collections.new(trait.capitalize())
                     bpy.context.scene.collection.children.link(root_collection)
