@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 2, 3),
+    "version": (2, 2, 4),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -71,8 +71,9 @@ class MatBatchProperties(bpy.types.PropertyGroup):
                                                                                                                          ("PT", 'Principled + Texture', 'Principled shading, with texture', 5),
                                                                                                                          ("PC", 'Principled + Color', 'Principled shading, with vertex color', 6),
                                                                                                                          ("HDRT", 'HDR Lightmap', "Emissive but with an HDR lightmap applied for baked lighting. Your HDR's UV map must be named 'lightmap', and your HDR's filename must contain either 'light_', '.hdr' or '.exr' to be detected automatically", 7),
-                                                                                                                         ("PP", 'Mirror UV', "Mirroring / ping pong effect applied to any UV Maps, on both X and Y axis", 8),
-                                                                                                                         ("NO_PP", 'Unmirror UV', "Removes the mirror / ping pong effect from any UV Maps, on both X and Y axis", 9),
+                                                                                                                         ("HDRTA", "HDR Lightmap with Alpha", "Same as the HDR Lightmap template, but with transparency, using the diffuse/albedo texture's alpha channel", 8),
+                                                                                                                         ("PP", 'Mirror UV', "Mirroring / ping pong effect applied to any UV Maps, on both X and Y axis", 9),
+                                                                                                                         ("NO_PP", 'Unmirror UV', "Removes the mirror / ping pong effect from any UV Maps, on both X and Y axis", 10),
                                                                                                                          ], default=0)
     SkipTexture: bpy.props.StringProperty(
         name="Skip Texture", description="Any texture containing this string in its filename will NOT be assigned in any image texture when applying a material template (optional - leave blank if unneeded)", default="", maxlen=200)
@@ -1794,6 +1795,131 @@ class ApplyMatTemplate(bpy.types.Operator):
                                         links.new(emission_node.outputs[0], material_output_node.inputs[0])
                                     links.new(uv_hdr_map_node.outputs[0], hdr_tex_node.inputs[0])
 
+                                case "HDRTA":
+
+                                    if bpy.app.version >= (4, 2, 0):
+                                        material.surface_render_method = 'BLENDED'
+                                    else:
+                                        material.blend_method = 'OPAQUE'
+
+                                    # Store the color of the existing Principled BSDF or Emissive node (if any)
+                                    stored_color = None
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'BSDF_PRINCIPLED' or node.type == 'EMISSION':
+                                            if is_node_connected(material, node):
+                                                stored_color = tuple(node.inputs[0].default_value)
+                                                break
+                                    
+                                    # Store the image of the existing image texture node (if any)
+                                    stored_image = None
+                                    stored_hdr_image = None
+
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'TEX_IMAGE' and node.image:
+                                            # An extra check to make sure we're not using the HDR texture as the albedo
+                                            if not ('light_' in node.image.name_full or '_light' in node.image.name_full or 'OPEN_EXR' in node.image.file_format or 'HDR' in node.image.file_format or 'lightmap' in node.image.name_full):
+                                                if is_node_connected(material, node):
+                                                    stored_image = node.image
+                                                    break
+
+                                    for node in material.node_tree.nodes:
+                                        if node.type == 'TEX_IMAGE' and node.image:
+                                            # Find the HDR texture in the material and store it, if one was already present 
+                                            if 'light_' in node.image.name_full or '_light' in node.image.name_full or 'OPEN_EXR' in node.image.file_format or 'HDR' in node.image.file_format or 'lightmap' in node.image.name_full:
+                                                stored_hdr_image = node.image
+                                                break
+
+                                    # Clear existing nodes and check if the designated "skipped texture" was stored
+                                    material.node_tree.nodes.clear()
+                                    if stored_image != None:
+                                        if skip_texture != "":
+                                            if skip_texture in stored_image.filepath:
+                                                stored_image = None
+
+                                    # Create necessary nodes
+                                    uv_map_node = None
+                                    uv_hdr_map_node = None
+                                    img_tex_node = None
+                                    mix_color_node = None
+                                    hdr_tex_node = material.node_tree.nodes.new(type='ShaderNodeTexImage')
+                                    uv_hdr_map_node = material.node_tree.nodes.new(type='ShaderNodeUVMap')
+                                    if stored_image != None:
+                                        uv_map_node = material.node_tree.nodes.new(type='ShaderNodeUVMap')
+                                        img_tex_node = material.node_tree.nodes.new(type='ShaderNodeTexImage')
+                                        mix_color_node = material.node_tree.nodes.new(type=mix_node_type)
+                                        if "MixRGB" not in mix_node_type:
+                                            mix_color_node.data_type = 'RGBA'
+                                        mix_color_node.blend_type = 'MULTIPLY'
+                                        if "MIX_RGB" in mix_color_node.type:
+                                            mix_color_node.use_clamp = False
+                                        else:
+                                            mix_color_node.clamp_factor = False
+                                            mix_color_node.clamp_result = False
+                                        mix_color_node.inputs[0].default_value = 1.0  # Set the factor to 1.0
+                                        img_tex_node.image = stored_image
+                                        if len(obj.data.uv_layers) > 0:
+                                            uv_map_node.uv_map = obj.data.uv_layers[0].name
+                                    emission_node = material.node_tree.nodes.new(type='ShaderNodeEmission')
+                                    material_output_node = material.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+
+                                    mix_shader_node = material.node_tree.nodes.new(type='ShaderNodeMixShader')
+                                    transparent_node = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')
+
+                                    material.alpha_threshold = 0.5
+
+                                    # Copy the original base color over
+                                    if stored_color != None:
+                                        emission_node.inputs[0].default_value = stored_color
+
+                                    # Arrange nodes for clarity
+                                    if stored_image != None:
+                                        img_tex_node.location = (-500, 0)
+                                        mix_color_node.location = (-200, 100)
+                                        uv_map_node.location = (-700, 0)
+                                    hdr_tex_node.location = (-500, 350)
+                                    uv_hdr_map_node.location = (hdr_tex_node.location.x - 200, hdr_tex_node.location.y)
+                                    emission_node.location = (0, 100)
+                                    material_output_node.location = (500, 100)
+                                    mix_shader_node.location = (200, 100)
+                                    transparent_node.location = (0, -100)
+
+                                    # Look for an HDR texture already stored in this Blender file, if one wasn't found earlier
+                                    if stored_hdr_image != None:
+                                        hdr_tex_node.image = stored_hdr_image
+                                    else:
+                                        for searched_img in bpy.data.images:
+                                            if 'OPEN_EXR' in searched_img.file_format or 'HDR' in searched_img.file_format or 'lightmap' in searched_img.name_full:
+                                                hdr_tex_node.image = searched_img
+                                    hdr_tex_node.label = "HDR Lightmap"
+                                    uv_hdr_map_node.uv_map = "lightmap"
+
+                                    # Link nodes
+                                    links = material.node_tree.links
+
+                                    print(f"\nStored image is: {stored_image}")
+                                    if stored_image != None:
+                                        if "MixRGB" not in mix_node_type:
+                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[7])
+                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[6])
+                                            links.new(mix_color_node.outputs[2], emission_node.inputs[0])
+                                        else:
+                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[2])
+                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[1])
+                                            links.new(mix_color_node.outputs[0], emission_node.inputs[0])
+                                        links.new(emission_node.outputs[0], material_output_node.inputs[0])
+                                        links.new(uv_map_node.outputs[0], img_tex_node.inputs[0])
+                                    else:
+                                        links.new(hdr_tex_node.outputs[0], emission_node.inputs[0])
+                                        links.new(emission_node.outputs[0], material_output_node.inputs[0])
+                                    links.new(uv_hdr_map_node.outputs[0], hdr_tex_node.inputs[0])
+
+                                    # Mix Shader links
+                                    links.new(emission_node.outputs[0], mix_shader_node.inputs[2])
+                                    links.new(transparent_node.outputs[0], mix_shader_node.inputs[1])
+                                    if stored_image is not None:
+                                        links.new(img_tex_node.outputs[1], mix_shader_node.inputs[0])
+                                    links.new(mix_shader_node.outputs[0], material_output_node.inputs[0])
+
                                 case "PP":
                                     node_tree = material.node_tree
 
@@ -1860,7 +1986,9 @@ class ApplyMatTemplate(bpy.types.Operator):
 
                             num_processed += 1
                     obj.data.update()
-
+        else:
+            return {'FINISHED'}
+        
         display_msg_box(
             f'Applied template to {num_processed} material(s).', 'Info', 'INFO')
 
