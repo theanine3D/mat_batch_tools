@@ -1,5 +1,5 @@
 # Material Batch Tools
-Addon for [Blender](https://www.blender.org/) (3.x+ / 4.x+) that can perform batch modifications of many materials and nodes simultaneously, automating common repetitive tasks on models with many materials. The addon dramatically speeds up the process of preparing models for baking, especially when baking many textures into one - such as with megatextures, texture atlases, etc.
+Addon for [Blender](https://www.blender.org/) (3.x to 5.x) that can perform batch modifications of many materials and nodes simultaneously, automating common repetitive tasks on models with many materials. The addon dramatically speeds up the process of preparing models for baking, especially when baking many textures into one - such as with megatextures, texture atlases, etc.
 
 Finding this addon useful? Please consider starring it ⭐, [leaving a review](https://extensions.blender.org/add-ons/matbatchtools/reviews/new/) on the Blender repository, or [donating](https://ko-fi.com/theanine3d) 🙂<br>
 
