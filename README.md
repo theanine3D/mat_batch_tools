@@ -23,7 +23,7 @@ Finding this addon useful? Please consider starring it ⭐, [leaving a review](h
 
 
 ## Installation
-- If you are using Blender 4.2 or higher, you can install the addon via Blender's official [online extension repository](https://extensions.blender.org/add-ons/matbatchtools/), which can also be accesed via Blender's Preferences.
+- If you are using Blender 4.2 or higher, you can install the addon via Blender's official [online extension repository](https://extensions.blender.org/add-ons/matbatchtools/), which can also be accessed via Blender's Preferences.
 - Otherwise, for the newest, bleeding edge version, press the big green Code button near the top of this page, and choose Download ZIP.
 - If you want a more stable release, check the [Releases](https://github.com/theanine3D/mat-batch-tools/releases).
 - After downloading either of the above, go into Blender's addon preferences (File → Preferences → Addons)
