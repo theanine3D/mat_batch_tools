@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 2, 4),
+    "version": (2, 3, 0),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -470,7 +470,6 @@ class AssignUVMapNode(bpy.types.Operator):
             for mat in list_of_mats:
 
                 nodetree = bpy.data.materials[mat].node_tree
-                links = bpy.data.materials[mat].node_tree.links
 
                 # Look for Image Texture nodes
                 for node in nodetree.nodes:
@@ -483,8 +482,12 @@ class AssignUVMapNode(bpy.types.Operator):
                         if node.label == "Bake Target":
                             continue
 
+                        # Special check for JPEG > JPG
+                        if bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower() == "jpg":
+                            bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter = "JPEG"
+                                               
                         # Check if Image Texture is in the user's entered format
-                        if node.image.file_format == bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter:
+                        if bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower() in node.image.file_format.lower() or node.image.file_format.lower() == bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower():
 
                             # Check if Image Texture already has a node connected to it
                             if node.inputs[0].links:
@@ -1165,9 +1168,15 @@ class ApplyMatTemplate(bpy.types.Operator):
                     for mat in list_of_mats:
 
                         material = bpy.data.materials[mat]
-                        material.use_nodes = True
+                        
+                        if bpy.app.version < (6, 0, 0):
+                            material.use_nodes = True
 
-                        if material and material.use_nodes:
+                        if material:
+
+                            if bpy.app.version < (6, 0, 0):
+                                if material.use_nodes == False:
+                                    continue
 
                             match target_template:
 
@@ -2293,12 +2302,19 @@ class IsolateByMatTrait(bpy.types.Operator):
                     for mat in list_of_mats:
 
                         material = bpy.data.materials[mat]
-                        material.use_nodes = True
+
+                        if bpy.app.version < (6, 0, 0):
+                            material.use_nodes == True
                         is_transparent = False
                         is_emissive = False
                         is_animated = False
 
-                        if material and material.use_nodes:
+                        if material:
+
+                            if bpy.app.version < (6, 0, 0):
+                                if material.use_nodes == False:
+                                    continue
+
                             for node in material.node_tree.nodes:
                                 if is_node_connected(material, node):
 
