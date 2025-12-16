@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 3, 0),
+    "version": (2, 3, 1),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -1755,6 +1755,7 @@ class ApplyMatTemplate(bpy.types.Operator):
                                             mix_color_node.clamp_result = False
                                         mix_color_node.inputs[0].default_value = 1.0  # Set the factor to 1.0
                                         img_tex_node.image = stored_image
+                                        img_tex_node.label = "Albedo"
                                         if len(obj.data.uv_layers) > 0:
                                             uv_map_node.uv_map = obj.data.uv_layers[0].name
                                     emission_node = material.node_tree.nodes.new(type='ShaderNodeEmission')
@@ -1783,6 +1784,8 @@ class ApplyMatTemplate(bpy.types.Operator):
                                                 hdr_tex_node.image = searched_img
                                     hdr_tex_node.label = "HDR Lightmap"
                                     uv_hdr_map_node.uv_map = "lightmap"
+                                    uv_hdr_map_node.label = "HDR UV"
+                                    uv_map_node.label = "Albedo UV"
 
                                     # Link nodes
                                     links = material.node_tree.links
@@ -1790,12 +1793,12 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     print(f"\nStored image is: {stored_image}")
                                     if stored_image != None:
                                         if "MixRGB" not in mix_node_type:
-                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[7])
-                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[6])
+                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[6])
+                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[7])
                                             links.new(mix_color_node.outputs[2], emission_node.inputs[0])
                                         else:
-                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[2])
-                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[1])
+                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[1])
+                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[2])
                                             links.new(mix_color_node.outputs[0], emission_node.inputs[0])
                                         links.new(emission_node.outputs[0], material_output_node.inputs[0])
                                         links.new(uv_map_node.outputs[0], img_tex_node.inputs[0])
@@ -1901,6 +1904,8 @@ class ApplyMatTemplate(bpy.types.Operator):
                                                 hdr_tex_node.image = searched_img
                                     hdr_tex_node.label = "HDR Lightmap"
                                     uv_hdr_map_node.uv_map = "lightmap"
+                                    uv_hdr_map_node.label = "HDR UV"
+                                    uv_map_node.label = "Albedo UV"
 
                                     # Link nodes
                                     links = material.node_tree.links
@@ -1908,12 +1913,12 @@ class ApplyMatTemplate(bpy.types.Operator):
                                     print(f"\nStored image is: {stored_image}")
                                     if stored_image != None:
                                         if "MixRGB" not in mix_node_type:
-                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[7])
-                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[6])
+                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[6])
+                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[7])
                                             links.new(mix_color_node.outputs[2], emission_node.inputs[0])
                                         else:
-                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[2])
-                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[1])
+                                            links.new(img_tex_node.outputs[0], mix_color_node.inputs[1])
+                                            links.new(hdr_tex_node.outputs[0], mix_color_node.inputs[2])
                                             links.new(mix_color_node.outputs[0], emission_node.inputs[0])
                                         links.new(emission_node.outputs[0], material_output_node.inputs[0])
                                         links.new(uv_map_node.outputs[0], img_tex_node.inputs[0])
