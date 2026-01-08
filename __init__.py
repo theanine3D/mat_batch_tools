@@ -213,8 +213,12 @@ def check_for_selected(objectOnly=False):
             for obj in bpy.context.selected_objects:
                 if obj.type == "MESH":
 
-                    for mat in obj.material_slots.keys():
-                        list_of_mats.add(mat)
+                    for slot in obj.material_slots:
+                        # slot.material can be None if the slot is empty
+                        if slot.material is None:
+                            continue
+                        list_of_mats.add(slot.material.name)
+
 
             if len(list_of_mats) > 0:
                 return list_of_mats
@@ -352,30 +356,40 @@ class PasteBakeTargetNode(bpy.types.Operator):
             if bake_node_preset["image"] != "":
 
                 # For each material in selected object
+                                # For each material in selected object
                 for mat in list_of_mats:
+
+                    # --- PATCH: safe resolve material ---
+                    if not mat:
+                        continue
+                    material = bpy.data.materials.get(mat)
+                    if material is None or not material.use_nodes or material.node_tree is None:
+                        continue
+                    nodes = material.node_tree.nodes
+                    # --- END PATCH ---
 
                     # Find Material Output node
                     reference_node = None
-                    for node in bpy.data.materials[mat].node_tree.nodes:
+                    for node in nodes:
                         if node.type == "OUTPUT_MATERIAL":
                             reference_node = node
                             break
 
                     # If no Material Output node exists, look for an alternative reference node instead
                     if reference_node is None:
-                        for node in bpy.data.materials[mat].node_tree.nodes:
-                            if node.type == "BSDF_PRINCIPLED" or node.type == "EMISSION":
+                        for node in nodes:
+                            if node.type in {"BSDF_PRINCIPLED", "EMISSION"}:
                                 reference_node = node
                                 break
 
                     # If reference node was found:
-                    if reference_node != None:
+                    if reference_node is not None:
 
                         new_image_node = None
                         bake_target_exists = False
 
                         # Check if Bake Target Node already exists. If so, reset it.
-                        for node in bpy.data.materials[mat].node_tree.nodes:
+                        for node in nodes:
                             node.select = False
                             if "Bake Target Node" in node.name:
                                 new_image_node = node
@@ -384,8 +398,7 @@ class PasteBakeTargetNode(bpy.types.Operator):
 
                         if not bake_target_exists:
                             # Create Image Texture node if Bake Target Node doesn't already exist
-                            new_image_node = bpy.data.materials[mat].node_tree.nodes.new(
-                                'ShaderNodeTexImage')
+                            new_image_node = material.node_tree.nodes.new('ShaderNodeTexImage')
 
                         new_image_node.image = bpy.data.images[bake_node_preset["image"]]
                         new_image_node.location = mathutils.Vector(
@@ -400,8 +413,9 @@ class PasteBakeTargetNode(bpy.types.Operator):
                         new_image_node.name = "Bake Target Node"
                         new_image_node.label = "Bake Target"
                         new_image_node.select = True
-                        bpy.data.materials[mat].node_tree.nodes.active = new_image_node
+                        material.node_tree.nodes.active = new_image_node
                         num_processed += 1
+
 
                 display_msg_box(
                     f'Created bake target in {num_processed} material(s).', 'Info', 'INFO')
