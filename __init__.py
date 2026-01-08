@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 3, 1),
+    "version": (2, 3, 2),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -330,7 +330,7 @@ class CopyBakeTargetNode(bpy.types.Operator):
                     "There are no valid materials in the active mesh object", "Error", "ERROR")
         else:
             display_msg_box(
-                "There is no active mesh object. Click on a mesh object to set it as active first", "Error", "ERROR")
+                "Please select a mesh object that has at least 1 material assigned.", "Error", "ERROR")
 
         return {'FINISHED'}
 
@@ -356,17 +356,14 @@ class PasteBakeTargetNode(bpy.types.Operator):
             if bake_node_preset["image"] != "":
 
                 # For each material in selected object
-                                # For each material in selected object
                 for mat in list_of_mats:
 
-                    # --- PATCH: safe resolve material ---
                     if not mat:
                         continue
                     material = bpy.data.materials.get(mat)
                     if material is None or not material.use_nodes or material.node_tree is None:
                         continue
                     nodes = material.node_tree.nodes
-                    # --- END PATCH ---
 
                     # Find Material Output node
                     reference_node = None
@@ -422,7 +419,7 @@ class PasteBakeTargetNode(bpy.types.Operator):
             
             else:
                 display_msg_box(
-                    "There is no currently set Bake Target. Use the Copy button first to set one", "Error", "ERROR")
+                    "There is no currently set Bake Target. Use the Copy button first to set one.", "Error", "ERROR")
 
         return {'FINISHED'}
 
@@ -612,13 +609,14 @@ class SetUVSlotAsActive(bpy.types.Operator):
         if check_for_selected(True) != False:
 
             # For each selected object
+            desired_uv_slot = int(bpy.context.scene.MatBatchProperties.UVSlotIndex)
             for obj in bpy.context.selected_objects:
                 if obj.type == "MESH":
                     mesh = obj.data
                     uvslots = mesh.uv_layers
                     uvslot_index = int(
                         bpy.context.scene.MatBatchProperties.UVSlotIndex)
-                    if len(uvslots) > 0:
+                    if len(uvslots) >= desired_uv_slot:
                         uvslots.active = uvslots[uvslot_index - 1]
                         num_processed += 1
                     obj.data.update()
