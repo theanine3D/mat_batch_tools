@@ -6,7 +6,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 3, 2),
+    "version": (2, 3, 3),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -355,6 +355,12 @@ class PasteBakeTargetNode(bpy.types.Operator):
             # Check if an image texture has actually been copied yet
             if bake_node_preset["image"] != "":
 
+                # Check if the previously copied image texture still exists under the same name
+                if bake_node_preset["image"] not in bpy.data.images.keys():
+                    display_msg_box(
+                        "The previously copied Bake Target image texture can no longer be found.", "Error", "ERROR")
+                    return {'FINISHED'}
+
                 # For each material in selected object
                 for mat in list_of_mats:
 
@@ -496,6 +502,10 @@ class AssignUVMapNode(bpy.types.Operator):
                         # Special check for JPEG > JPG
                         if bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower() == "jpg":
                             bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter = "JPEG"
+
+                        # Special check for Targa > TGA
+                        if bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower() == "tga":
+                            bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter = "Targa"
                                                
                         # Check if Image Texture is in the user's entered format
                         if bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower() in node.image.file_format.lower() or node.image.file_format.lower() == bpy.context.scene.MatBatchProperties.UVMapNodeExtensionFilter.lower():
@@ -2279,12 +2289,9 @@ class CopyTexToMatName(bpy.types.Operator):
                                 if mat in list_of_mats:
                                     list_of_mats.remove(mat)
                                 num_processed += 1
-
-                    display_msg_box(
-                        f'Renamed {num_processed} material(s).', 'Info', 'INFO')
-                else:
-                    display_msg_box(
-                        'No diffuse textures found.', 'Error', 'ERROR')
+                    
+            display_msg_box(
+                f'Renamed {num_processed} material(s).', 'Info', 'INFO')
 
         return {'FINISHED'}
 
