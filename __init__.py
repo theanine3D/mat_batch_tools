@@ -7,7 +7,7 @@ bl_info = {
     "name": "Material Batch Tools",
     "description": "Batch tools for quickly modifying, copying, and pasting nodes on all materials in selected objects",
     "author": "Theanine3D",
-    "version": (2, 4, 0),
+    "version": (2, 5, 0),
     "blender": (3, 0, 0),
     "category": "Material",
     "location": "Properties -> Material Properties",
@@ -44,7 +44,13 @@ class MatBatchProperties(bpy.types.PropertyGroup):
     UVSlotIndex: bpy.props.EnumProperty(
         name="UV Slot", description="The UV Slot that will be modified by the buttons below", items=[("1", 'UV Slot 1', 'The first UV slot in the object mesh(es)', 1), ("2", 'UV Slot 2', 'The second UV slot in the object mesh(es)', 2)], default=1)
     VCName: bpy.props.StringProperty(
-        name="Name", description="Name to set in Vertex Color slot 1", default="Col", maxlen=64)
+        name="Name", description="Name to set in the selected Vertex Color slot", default="Col", maxlen=64)
+    VCIndex: bpy.props.IntProperty(
+        name="Slot", description="The Vertex Color slot (color attribute layer) that will be modified by the buttons below. Slot 1 is the first layer in the mesh", default=1, min=1, max=8)
+    VCConvertDomain: bpy.props.EnumProperty(
+        name="Domain", description="The domain that the 'Convert Vertex Color Slot' button will convert the selected slot to", items=[("POINT", 'Vertex', 'One color per vertex', 0), ("CORNER", 'Face Corner', 'One color per face corner, allowing hard color splits between faces', 1)], default="CORNER")
+    VCConvertDataType: bpy.props.EnumProperty(
+        name="Data Type", description="The data type that the 'Convert Vertex Color Slot' button will convert the selected slot to", items=[("FLOAT_COLOR", 'Color', '32-bit floating point color per channel - recommended for baked HDR light', 0), ("BYTE_COLOR", 'Byte Color', '8-bit integer color per channel - the most common format for game engines', 1)], default="BYTE_COLOR")
     AlphaBlendMode: bpy.props.EnumProperty(
         name="Blend Mode", description="The Blend Mode and Shadow Mode to set in the material(s). If set to Alpha Blend, Shadow Mode will be set to Alpha Clip", items=[("OPAQUE", 'Opaque', "No transparency. Any Principled BSDF 'Alpha' input connection will be removed (value reset to 1.0), and any Mix Shader + Transparent BSDF setup will be collapsed into a direct shader connection", 0), ("CLIP", 'Alpha Clip', 'Pixels will be either 100 percent transparent or 100 percent opaque', 1), ("BLEND", 'Alpha Blend', 'Pixels will be anywhere between 0 to 100 percent transparent', 2)], default=0)
     AlphaBlendFilter: bpy.props.EnumProperty(
@@ -662,19 +668,23 @@ class AssignVCToNodes(bpy.types.Operator):
 
 
 class RenameVertexColorSlot(bpy.types.Operator):
-    """Rename the first Vertex Color slot in all selected objects, using the name specified above"""
+    """Rename the selected Vertex Color slot in all selected objects, using the name specified above. Objects that don't have that slot are skipped"""
     bl_idname = "object.rename_vertex_color"
-    bl_label = "Rename Vertex Color Slot 1"
+    bl_label = "Rename Vertex Color Slot"
     bl_options = {'REGISTER'}
 
     def execute(self, context):
         num_processed = 0
+        num_skipped = 0
 
         # Blender 3.2 renamed "vertex colors" to "color attributes," so let's check the version beforehand
         useColorAttributes = (bpy.app.version >= (3, 2, 0))
 
         # Check if any objects are selected
         if check_for_selected(True) != False:
+
+            vcslot_index = bpy.context.scene.MatBatchProperties.VCIndex - 1
+            vcname = bpy.context.scene.MatBatchProperties.VCName
 
             # For each selected object
             for obj in bpy.context.selected_objects:
@@ -685,48 +695,103 @@ class RenameVertexColorSlot(bpy.types.Operator):
                         vcslots = mesh.color_attributes
                     else:
                         vcslots = mesh.vertex_colors
-                    vcname = bpy.context.scene.MatBatchProperties.VCName
 
-                    if len(vcslots) > 0:
-                        vcslots[0].name = vcname
+                    if len(vcslots) > vcslot_index:
+                        vcslots[vcslot_index].name = vcname
+                        num_processed += 1
+                        obj.data.update()
                     else:
-                        if useColorAttributes:
-                            vcslots.new(name=vcname, type="FLOAT_COLOR",
-                                        domain="POINT")
-                            # vcslots.new(name=vcname, type="BYTE_COLOR",
-                            #             domain="CORNER")
-                        else:
-                            vcslots.new(name=vcname)
-                        
-                    num_processed += 1
-                    obj.data.update()
+                        num_skipped += 1
 
+        msg = f'Renamed vertex color slot in {num_processed} object(s).'
+        if num_skipped > 0:
+            msg += f"\n{num_skipped} object(s) skipped - slot {bpy.context.scene.MatBatchProperties.VCIndex} doesn't exist.\nUse 'Create Vertex Color Layer(s)' to add missing slots first."
+        display_msg_box(msg, 'Info', 'INFO')
+        return {'FINISHED'}
+
+# Create Vertex Color Layer(s) operator
+
+class CreateVertexColorLayers(bpy.types.Operator):
+    """Ensures every selected object has at least as many Vertex Color slots as the slot number selected above, creating placeholder layers where needed. New layers use the Domain and Data Type chosen below"""
+    bl_idname = "object.create_vertex_color_layers"
+    bl_label = "Create Vertex Color Layer(s)"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        num_processed = 0
+        num_created = 0
+
+        # Blender 3.2 renamed "vertex colors" to "color attributes," so let's check the version beforehand.
+        # Older versions had only one vertex color type (Byte Color / Face Corner), so the
+        # Domain and Data Type settings are ignored there
+        useColorAttributes = (bpy.app.version >= (3, 2, 0))
+
+        new_domain = bpy.context.scene.MatBatchProperties.VCConvertDomain
+        new_type = bpy.context.scene.MatBatchProperties.VCConvertDataType
+
+        # Check if any objects are selected
+        if check_for_selected(True) != False:
+
+            target_count = bpy.context.scene.MatBatchProperties.VCIndex
+
+            meshes = [obj.data for obj in bpy.context.selected_objects if obj.type == "MESH"]
+
+            # Pad out any meshes that have fewer slots than the target count
+            for mesh in meshes:
+                if useColorAttributes:
+                    vcslots = mesh.color_attributes
+                else:
+                    vcslots = mesh.vertex_colors
+
+                if len(vcslots) < target_count:
+                    while len(vcslots) < target_count:
+                        if useColorAttributes:
+                            vcslots.new(name="Attribute", type=new_type,
+                                        domain=new_domain)
+                        else:
+                            # Legacy vertex colors are always Byte Color / Face Corner, and max 8 layers
+                            if len(vcslots) >= 8:
+                                break
+                            vcslots.new()
+                        num_created += 1
+                    num_processed += 1
+                    mesh.update()
+
+        if useColorAttributes:
+            type_desc = f'{new_type} / {new_domain}'
+        else:
+            type_desc = 'BYTE_COLOR / CORNER'
         display_msg_box(
-            f'Renamed {num_processed} vertex color slot(s).', 'Info', 'INFO')
+            f'Created {num_created} vertex color layer(s) across {num_processed} object(s),\nusing type: {type_desc}.', 'Info', 'INFO')
         return {'FINISHED'}
 
 # Convert Vertex Color operator
 
 class ConvertVertexColor(bpy.types.Operator):
-    """Converts the data type of the first Color Attribute slot in all selected objects, between 'Face Corner Byte Color' and 'Vertex Color'"""
+    """Converts the selected Color Attribute slot in all selected objects to the Domain and Data Type chosen above. Slots that already match are skipped, as are objects that don't have the selected slot"""
     bl_idname = "object.convert_vertex_color"
-    bl_label = "Convert Vertex Color Slot 1"
+    bl_label = "Convert Vertex Color Slot"
     bl_options = {'REGISTER'}
 
     def execute(self, context):
 
-        # Blender 3.2 renamed "vertex colors" to "color attributes," so let's check the version beforehand
-        useColorAttributes = (bpy.app.version >= (3, 2, 0))
-
-        if not useColorAttributes:
+        # Blender 3.2 renamed "vertex colors" to "color attributes," and the
+        # data-preserving convert operator was added in 3.4
+        if bpy.app.version < (3, 4, 0):
             display_msg_box(
-                f'This feature is only available in Blender 3.2 or higher.', 'Error', 'ERROR')
+                f'This feature is only available in Blender 3.4 or higher.', 'Error', 'ERROR')
             return {'FINISHED'}
 
         num_processed = 0
+        num_matched = 0
+        num_skipped = 0
 
         # Check if any objects are selected
         if check_for_selected(True) != False:
+
+            vcslot_index = bpy.context.scene.MatBatchProperties.VCIndex - 1
+            new_domain = bpy.context.scene.MatBatchProperties.VCConvertDomain
+            new_type = bpy.context.scene.MatBatchProperties.VCConvertDataType
 
             # For each selected object
             for obj in bpy.context.selected_objects:
@@ -734,22 +799,31 @@ class ConvertVertexColor(bpy.types.Operator):
 
                     mesh = obj.data
                     vcslots = mesh.color_attributes
-                    vcname = bpy.context.scene.MatBatchProperties.VCName
 
-                    if len(vcslots) == 1:
-                        if vcslots[0].data_type == "FLOAT_COLOR":
-                            vcslots.remove(vcslots[0])
-                            vcslots.new(name=vcname, type="BYTE_COLOR",
-                                        domain="CORNER")
-                        elif vcslots[0].data_type == "BYTE_COLOR":
-                            vcslots.remove(vcslots[0])
-                            vcslots.new(name=vcname, type="FLOAT_COLOR",
-                                        domain="POINT")
+                    if len(vcslots) > vcslot_index:
+                        slot = vcslots[vcslot_index]
+
+                        if slot.data_type == new_type and slot.domain == new_domain:
+                            num_matched += 1
+                            continue
+
+                        # The convert operator works on the active color attribute,
+                        # and preserves both the color data and the slot's position
+                        vcslots.active_color = slot
+                        with bpy.context.temp_override(object=obj, active_object=obj, selected_objects=[obj]):
+                            bpy.ops.geometry.color_attribute_convert(
+                                domain=new_domain, data_type=new_type)
                         num_processed += 1
-                    obj.data.update()
+                        obj.data.update()
+                    else:
+                        num_skipped += 1
 
-        display_msg_box(
-            f'Converted {num_processed} color attribute slot(s).', 'Info', 'INFO')
+        msg = f'Converted color attribute slot in {num_processed} object(s).'
+        if num_matched > 0:
+            msg += f'\n{num_matched} object(s) already matched the chosen combination.'
+        if num_skipped > 0:
+            msg += f"\n{num_skipped} object(s) skipped - slot {bpy.context.scene.MatBatchProperties.VCIndex} doesn't exist.\nUse 'Create Vertex Color Layer(s)' to add missing slots first."
+        display_msg_box(msg, 'Info', 'INFO')
         return {'FINISHED'}
 
 
@@ -2776,9 +2850,21 @@ class MaterialBatchToolsSubPanel_UV_VC(bpy.types.Panel):
         rowVertexColors4 = boxVertexColors.row()
 
         rowVertexColors1.prop(bpy.context.scene.MatBatchProperties, "VCName")
-        rowVertexColors2.operator("material.assign_vc_to_nodes")
-        rowVertexColors3.operator("object.rename_vertex_color")
-        rowVertexColors4.operator("object.convert_vertex_color")
+        rowVertexColors2.prop(bpy.context.scene.MatBatchProperties, "VCIndex")
+        rowVertexColors3.operator("material.assign_vc_to_nodes")
+        rowVertexColors4.operator("object.rename_vertex_color")
+
+        # Sub-box for the operators that use the Domain and Data Type settings
+        boxVCType = boxVertexColors.box()
+        rowVCType1 = boxVCType.row()
+        rowVCType2 = boxVCType.row()
+        rowVCType3 = boxVCType.row()
+        rowVCType4 = boxVCType.row()
+
+        rowVCType1.prop(bpy.context.scene.MatBatchProperties, "VCConvertDomain")
+        rowVCType2.prop(bpy.context.scene.MatBatchProperties, "VCConvertDataType")
+        rowVCType3.operator("object.create_vertex_color_layers")
+        rowVCType4.operator("object.convert_vertex_color")
 
 class MaterialBatchToolsSubPanel_Isolate(bpy.types.Panel):
     bl_parent_id = "MATERIAL_PT_matbatchtools"
@@ -2822,6 +2908,7 @@ classes = (
     OverwriteUVSlotName,
     SetUVSlotAsActive,
     AssignVCToNodes,
+    CreateVertexColorLayers,
     RenameVertexColorSlot,
     ConvertVertexColor,
     SetBlendMode,
